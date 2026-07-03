@@ -5786,6 +5786,15 @@ export {
 		## to cope with that.
 		TS_ISO8601,
 	};
+
+	## Escaping policy for non-printable non-UTF8 sequences.
+	type StringEscapePolicy: enum {
+		## Zeek 9.0 and prior escaped non-printable bytes as \\x32 without
+		## backslash stuffing, resulting in non-reversible encodings.
+		STRING_ESCAPE_POLICY_LEGACY,
+		STRING_ESCAPE_POLICY_TSV,
+		STRING_ESCAPE_POLICY_PUA,
+	};
 }
 
 module Reporter;

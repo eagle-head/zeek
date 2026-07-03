@@ -26,7 +26,14 @@ public:
         TS_MILLIS_UNSIGNED // Unsigned milliseconds from the UNIX epoch, overflowing.
     };
 
-    JSON(MsgThread* t, TimeFormat tf, bool include_unset_fields = false);
+    enum StringEscapePolicy : uint8_t {
+        STRING_ESCAPE_POLICY_LEGACY,
+        STRING_ESCAPE_POLICY_PUA,
+        STRING_ESCAPE_POLICY_TSV,
+    };
+
+    JSON(MsgThread* t, TimeFormat tf, bool include_unset_fields = false,
+         StringEscapePolicy string_escape_policy = STRING_ESCAPE_POLICY_LEGACY);
 
     bool Describe(ODesc* desc, Value* val, const std::string& name = "") const override;
     bool Describe(ODesc* desc, int num_fields, const Field* const* fields, Value** vals) const override;
@@ -38,6 +45,7 @@ private:
 
     TimeFormat timestamps;
     bool include_unset_fields;
+    StringEscapePolicy string_escape_policy;
 };
 
 } // namespace zeek::threading::formatter

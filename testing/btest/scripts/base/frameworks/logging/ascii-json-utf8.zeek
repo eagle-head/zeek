@@ -1,6 +1,15 @@
 #
-# @TEST-EXEC: zeek -b %INPUT
-# @TEST-EXEC: btest-diff ssh.log
+# @TEST-EXEC: zeek -b %INPUT LogAscii::json_string_escape_policy=JSON::STRING_ESCAPE_POLICY_LEGACY;
+# @TEST-EXEC: mv ssh.log ssh.log.legacy
+# @TEST-EXEC: btest-diff ssh.log.legacy
+#
+# @TEST-EXEC: zeek -b %INPUT LogAscii::json_string_escape_policy=JSON::STRING_ESCAPE_POLICY_TSV;
+# @TEST-EXEC: mv ssh.log ssh.log.tsv
+# @TEST-EXEC: btest-diff ssh.log.tsv
+#
+# @TEST-EXEC: zeek -b %INPUT LogAscii::json_string_escape_policy=JSON::STRING_ESCAPE_POLICY_PUA;
+# @TEST-EXEC: mv ssh.log ssh.log.pua
+# @TEST-EXEC: btest-diff ssh.log.pua
 #
 # Testing all possible types.
 
@@ -88,7 +97,17 @@ event zeek_init()
 	Log::write(SSH::LOG, [$s="\xff"]);
 	Log::write(SSH::LOG, [$s="\\\\x\\abc\\x.exe"]);
 	Log::write(SSH::LOG, [$s="\xf9\xf9"]);
+	Log::write(SSH::LOG, [$s="byte 9f vs literal backslash x9f: \xf9 vs \\xf9"]);
+	# UTF-8 encoded rockets in source:
+	Log::write(SSH::LOG, [$s="a rocket 🚀!"]);
 	Log::write(SSH::LOG, [$s="a rocket 🚀!\x00 NUL\x00"]);
+	# Hex encoded rockets:
+	Log::write(SSH::LOG, [$s="a rocket \xf0\x9f\x9a\x80!"]);
+	Log::write(SSH::LOG, [$s="a rocket \xf0\x9f\x9a\x80!\x00 NUL\x00"]);
+	Log::write(SSH::LOG, [$s="half-a-rocket rocket \xf0\x9f!"]);
+	Log::write(SSH::LOG, [$s="half-a-rocket rocket \xf0\x9f!\x00 NUL\x00"]);
+	Log::write(SSH::LOG, [$s="half-a-rocket rocket \xf0\x9f and a rocket\xf0\x9f\x9a\x80!"]);
+	Log::write(SSH::LOG, [$s="half-a-rocket rocket \xf0\x9f and a rocket\xf0\x9f\x9a\x80!\x00 NUL\x00"]);
 	Log::write(SSH::LOG, [$s="\a\b"]);
 	Log::write(SSH::LOG, [$s="\\a=\a \\b=\b \\t=\t \\n=\n"]);
 }
