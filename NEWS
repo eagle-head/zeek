@@ -51,6 +51,52 @@ New Functionality
   units to GSSAPI and NTLM parsers to extract additional information into the
   the ``ntlm.log`` or ``kerberos.log`` logs.
 
+- Escaping of control characters and invalid UTF-8 sequences with JSON logging has
+  been made configurable. By default, the byte value \x07 and the literal string \x07
+  both result as "\\x07" in string in JSON, making it impossible to determine the
+  original value from the log.
+
+  To change the escaping behavior globally, redefine the ``Log::json_string_escape_policy``
+  variable. Per filter configuration is possible by passing an "json_string_escape_policy"
+  entry via the ``config`` table of ``Log::Filter`` instances.
+
+	redef Log::json_string_escape_policy = JSON::StringEscapePolicy::TSV;
+
+  Note that this mechanism is meant to cover the occasionally non-printable byte
+  or sometimes polluted string field. As a script writer, if a field you're logging is
+  knowingly binary data (raw packet data, crypto material, binary hash or checksum),
+  use ``encode_base64()`` or ``bytestring_to_hextr()`` explicitly on the field before
+  logging it and document it as base64 or hex encoded for downstream consumers.
+
+  The following JSON string escaping policies are supported as of Zeek 9.0:
+
+	LEGACY (default):
+	  Zeek's previous behavior continues to be the default.
+
+	TSV:
+	  Strings are first escaped as they would for TSV logs. All control characters
+	  and non-printable bytes not part of valid UTF-8 sequences are backslash-x-hex
+	  escaped. Lone backslashes are backslash escaped. Then, standard JSON escaping
+	  is applied, escaping all backslashes again.
+
+	  In a JSON string, the byte value \x07 will become "\\x07".
+	  The literal string \x07 will become "\\\\x07".
+
+	PUA:
+	  All control characters and non-printable bytes not part of valid UTF-8
+	  sequences are mapped into Unicode Supplementary Private Use Area-A
+	  (U+F0000..U+FFFFF) and encoded as surrogate pair:
+
+	  In a JSON string, the byte value \x07 will become "\udb80\udc07".
+	  The literal string \x07 will become "\\x07".
+
+  You will need to evaluate capabilities of your downstream tooling and adapt
+  queries for raw byte values accordingly. If you're working with both, TSV and
+  JSON logs, using the TSV escaping policy might be easiest as you can take the
+  string from the parsed JSON and pass it to the same pipeline that'd expect
+  TSV strings. Note that fields containing Windows paths will show a lot more
+  backslashes in the raw JSON when using TSV policy compared to LEGACY.
+
 - Imported the zeek/spicy-zip file analyzer into the main tree. This analyzer outputs
   information about ZIP files found in other protocols, including information about the
   contents of such archives. It will recursive search zip files, so there is the
