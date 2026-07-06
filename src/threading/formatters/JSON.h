@@ -30,7 +30,6 @@ public:
         STRING_ESCAPE_POLICY_LEGACY,
         STRING_ESCAPE_POLICY_PUA,
         STRING_ESCAPE_POLICY_TSV,
-        STRING_ESCAPE_POLICY_LATIN1,
     };
 
     JSON(MsgThread* t, TimeFormat tf, bool include_unset_fields = false,

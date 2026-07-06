@@ -196,11 +196,6 @@ void JSON::BuildJSON(zeek::json::detail::NullDoubleWriter& writer, Value* val, c
                     writer.RawValue(s.data(), s.size(), rapidjson::kStringType);
                     break;
                 }
-                case STRING_ESCAPE_POLICY_LATIN1: {
-                    auto s = util::escape_string_for_json(sv, "\\u00");
-                    writer.RawValue(s.data(), s.size(), rapidjson::kStringType);
-                    break;
-                }
                 case STRING_ESCAPE_POLICY_TSV: {
                     // This should be roughly what we do in the ASCII formatter.
                     // Should we cache desc on the formatter?
