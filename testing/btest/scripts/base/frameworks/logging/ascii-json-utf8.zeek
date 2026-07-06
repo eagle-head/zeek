@@ -11,6 +11,10 @@
 # @TEST-EXEC: mv ssh.log ssh.log.pua
 # @TEST-EXEC: btest-diff ssh.log.pua
 #
+# @TEST-EXEC: zeek -b %INPUT LogAscii::json_string_escape_policy=JSON::STRING_ESCAPE_POLICY_LATIN1;
+# @TEST-EXEC: mv ssh.log ssh.log.latin1
+# @TEST-EXEC: btest-diff ssh.log.latin1
+#
 # Testing all possible types.
 
 redef LogAscii::use_json = T;

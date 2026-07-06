@@ -390,6 +390,8 @@ bool Ascii::InitFormatter() {
             string_escape_policy = threading::formatter::JSON::STRING_ESCAPE_POLICY_PUA;
         else if ( strcmp(json_string_escape_policy.c_str(), "JSON::STRING_ESCAPE_POLICY_TSV") == 0 )
             string_escape_policy = threading::formatter::JSON::STRING_ESCAPE_POLICY_TSV;
+        else if ( strcmp(json_string_escape_policy.c_str(), "JSON::STRING_ESCAPE_POLICY_LATIN1") == 0 )
+            string_escape_policy = threading::formatter::JSON::STRING_ESCAPE_POLICY_LATIN1;
         else {
             Error(Fmt("Invalid JSON string escape policy: %s", json_string_escape_policy.c_str()));
             return false;
