@@ -1,25 +1,25 @@
 // See the file "COPYING" in the main distribution directory for copyright.
 
-//
-// An opinionated cluster-layout.zeek generator for single and multi-node
-// deployments the Zeek workers do not have ports allocated. For the
-// multi-node use-case, expects -C /etc/zeek/cluster and will assemble a
-// cluster-layout based on the files in that directory. For the single-node
-// use-case, expects the individual process counts as individual arguments.
+// An opinionated cluster-layout.zeek generator for single and multi host
+// cluster deployments. The Zeek workers do not have ports allocated. For the
+// multi-host use-case, expects -C /etc/zeek/cluster and will assemble a
+// cluster-layout based on the files in that directory. For the single-host
+// use-case, expects the individual process counts as individual arguments,
+// or giving a /etc/zeek/zeek.conf file to -C.
 //
 // The cluster-layout.zeek content is produced on stdout or written to the
 // path given to the -o flag.
 //
 // Usage:
 //
-//     # Provide single-node information directly.
 //     zeek-cluster-layout-generator -L <loggers> -P <proxies> -W <workers>
 //         -a <listen_address> -p <listen_port>
 //         -m <metrics_port> -b <metrics_address>
 //         [-o outfile]
 //
-//     # Using the /etc/zeek/cluster directory:
 //     zeek-cluster-layout-generator -C /etc/zeek/cluster [-o outfile]
+//
+//     zeek-cluster-layout-generator -C /etc/zeek/zeek.conf [-o outfile]
 //
 #include <unistd.h>
 #include <algorithm>
@@ -73,7 +73,9 @@ struct ClusterLayoutOptions {
     }
     std::string NextMetricsPort() {
         auto result = std::to_string(metrics_port) + "/tcp";
-        ++metrics_port;
+        // Only increment if not zero: 0/tcp means disabled!
+        if ( metrics_port != 0 )
+            ++metrics_port;
         return result;
     }
 };
@@ -86,20 +88,6 @@ public:
         lines.emplace_back("redef Cluster::nodes += {");
     }
 
-    // Include all nodes in the given ClusterLayoutOptions.
-    ClusterLayout(ClusterLayoutOptions& opts) : ClusterLayout() {
-        AddNode("manager", "MANAGER", opts.address, opts.NextMetricsPort(), opts.NextPort());
-
-        for ( int i = 1; i <= opts.loggers; i++ ) {
-            AddNode("logger-" + std::to_string(i), "LOGGER", opts.address, opts.NextMetricsPort(), opts.NextPort());
-        }
-
-        for ( int i = 1; i <= opts.proxies; i++ )
-            AddNode("proxy-" + std::to_string(i), "PROXY", opts.address, opts.NextMetricsPort(), opts.NextPort());
-
-        AddWorkers(opts);
-    }
-
     void Done() {
         lines.emplace_back("};");
         lines.emplace_back("");
@@ -107,7 +95,23 @@ public:
 
         lines.emplace_back("");
         lines.emplace_back("@load base/frameworks/telemetry/options");
-        // lines.emplace_back("redef Telemetry::metrics_address = \"" + opts.metrics_address + "\";");
+        lines.emplace_back("");
+
+        lines.emplace_back("# Either use ZEEK_TELEMETRY_LISTEN_ADDRESS env or the value from node$ip.");
+        lines.emplace_back("const metrics_address_env = getenv(\"ZEEK_TELEMETRY_LISTEN_ADDRESS\");");
+        lines.emplace_back("@if ( |metrics_address_env| > 0 )");
+        lines.emplace_back("redef Telemetry::metrics_address = metrics_address_env;");
+        lines.emplace_back("@else");
+        lines.emplace_back("@if ( Cluster::node in Cluster::nodes )");
+        lines.emplace_back("const my_ip = Cluster::nodes[Cluster::node]$ip;");
+        lines.emplace_back("# Need to quote IPv6 by hand... strange...");
+        lines.emplace_back("const my_ip_str = is_v4_addr(my_ip) ? cat(my_ip) : cat(\"[\", my_ip, \"]\");");
+        lines.emplace_back("redef Telemetry::metrics_address = my_ip_str;");
+        lines.emplace_back("@endif");
+        lines.emplace_back("@endif");
+        lines.emplace_back("");
+        lines.emplace_back("# Always use the metrics port from the cluster layout for now");
+        lines.emplace_back("# This can/may change in the future!");
         lines.emplace_back("redef Telemetry::metrics_port = Cluster::local_node_metrics_port();");
     }
 
@@ -196,7 +200,7 @@ void usage(const char* prog) {
 int main(int argc, char* argv[]) {
     ClusterLayoutOptions opts;
 
-    std::string cluster_dir = "";
+    std::string config_or_cluster = "";
     std::string out = "-";
     opterr = 0;
 
@@ -205,7 +209,7 @@ int main(int argc, char* argv[]) {
             break;
 
         switch ( c ) {
-            case 'C': cluster_dir = optarg; break;
+            case 'C': config_or_cluster = optarg; break;
             case 'L': opts.loggers = checked_strtoul(c, optarg); break;
             case 'P': opts.proxies = checked_strtoul(c, optarg); break;
             case 'W': opts.workers = optarg; break;
@@ -221,24 +225,60 @@ int main(int argc, char* argv[]) {
 
     ClusterLayout layout;
 
-    if ( cluster_dir.empty() ) {
-        layout = ClusterLayout(opts);
+    if ( config_or_cluster.empty() ) {
+        // Include all nodes in the given ClusterLayoutOptions.
+        layout.AddNode("manager", "MANAGER", opts.address, opts.NextMetricsPort(), opts.NextPort());
+
+        for ( int i = 1; i <= opts.loggers; i++ ) {
+            layout.AddNode("logger-" + std::to_string(i), "LOGGER", opts.address, opts.NextMetricsPort(),
+                           opts.NextPort());
+        }
+
+        for ( int i = 1; i <= opts.proxies; i++ )
+            layout.AddNode("proxy-" + std::to_string(i), "PROXY", opts.address, opts.NextMetricsPort(),
+                           opts.NextPort());
+
+        layout.AddWorkers(opts);
     }
     else {
-        // Parse all configuration files from the cluster_dir and assemble a
-        // cluster layout. Configs need to strictly match <hostname>.zeek.conf.
-        //
-        // We could validate a few things here, like IP address an name conflicts,
-        // but for now this should do, and technically overlapping IPs are okay
-        // if the ports differ, so there's that. But IP/port overlap among processes
-        // would be problematic.
-        std::regex re_conf("[a-z0-9][-a-z0-9_]*\\.zeek\\.conf$");
-
         std::vector<std::filesystem::path> fnames;
 
-        for ( const auto& fname : std::filesystem::directory_iterator(cluster_dir) ) {
-            if ( std::regex_match(fname.path().filename().string(), re_conf) )
-                fnames.emplace_back(fname);
+        if ( std::filesystem::is_directory(config_or_cluster) ) {
+            // If the -C argument is a directory, parse all configuration files from it
+            // and assemble a cluster layout. Configs need to strictly match <hostname>.zeek.conf
+            // within the directory.
+            //
+            // We could validate a few things here, like IP address an name conflicts,
+            // but for now this should do, and technically overlapping IPs are okay
+            // if the ports differ, so there's that. But IP/port overlap among processes
+            // would be problematic.
+            //
+            // The directory must end with cluster/ as some of the configuration
+            // parsing behaves differently (specifically node prefixing).
+            std::regex re_conf("[a-z0-9][-a-z0-9_]*\\.zeek\\.conf$");
+
+            auto dir = std::filesystem::path(config_or_cluster);
+            if ( dir.filename().empty() ) // strip trailing slash
+                dir = dir.parent_path();
+
+            if ( dir.filename() != "cluster" ) {
+                std::fprintf(stderr, "directory given to -C must end in cluster/\n");
+                std::exit(1);
+            }
+
+
+            for ( const auto& fname : std::filesystem::directory_iterator(config_or_cluster) ) {
+                if ( std::regex_match(fname.path().filename().string(), re_conf) )
+                    fnames.emplace_back(fname);
+            }
+        }
+        else if ( std::filesystem::is_regular_file(config_or_cluster) ) {
+            // If it's just a file, do the same.
+            fnames.emplace_back(config_or_cluster);
+        }
+        else {
+            std::fprintf(stderr, "neither file nor directory: %s\n", config_or_cluster.c_str());
+            std::exit(1);
         }
 
         std::sort(fnames.begin(), fnames.end());
@@ -260,7 +300,12 @@ int main(int argc, char* argv[]) {
             auto next_port = [&port]() { return std::to_string(port++) + "/tcp"; };
 
             int metrics_port = config.MetricsPort();
-            auto next_metrics_port = [&metrics_port]() { return std::to_string(metrics_port++) + "/tcp"; };
+            auto next_metrics_port = [&metrics_port]() {
+                auto port_str = std::to_string(metrics_port) + "/tcp";
+                if ( metrics_port != 0 )
+                    metrics_port++;
+                return port_str;
+            };
 
             // The manager in a cluster is always named manager, no prefix here.
             if ( config.Manager() )
