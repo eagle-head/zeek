@@ -425,7 +425,7 @@ std::pair<InterfaceWorkerConfig, std::string> zeek::detail::InterfaceWorkerConfi
             }
         }
         else if ( key == "worker_args" ) {
-            iwc.args = option.Value();
+            iwc.args = option.JoinedValues();
         }
         else if ( key == "worker_env" ) {
             auto [env, error] = option.AsEnvVars();
@@ -580,7 +580,7 @@ ZeekClusterConfig parse_config(const std::filesystem::path& default_zeek_base_di
         if ( key == "args" ) {
             config.args = option.JoinedValues();
         }
-        else if ( key == "manger_args" ) {
+        else if ( key == "manager_args" ) {
             config.manager_args = option.JoinedValues();
         }
         else if ( key == "logger_args" ) {
@@ -596,7 +596,7 @@ ZeekClusterConfig parse_config(const std::filesystem::path& default_zeek_base_di
             else
                 config.Error("error in env: " + error);
         }
-        else if ( key == "manger_env" ) {
+        else if ( key == "manager_env" ) {
             auto [env, error] = option.AsEnvVars();
             if ( error.empty() )
                 config.manager_env = std::move(env);
